@@ -1,0 +1,15 @@
+# Python >= 3.12 (этого требуют numpy и scipy указанных версий)
+
+# Проверено пилотом (pilot/pilot_grokking.py), Python 3.13, CPU
+torch==2.14.1
+numpy==2.5.3
+scipy==1.18.1
+matplotlib==3.11.2
+pyyaml==6.0.3
+
+# Анализ, тесты, ноутбуки
+pandas==3.1.0
+pytest==9.1.1
+ruff==0.17.2
+jupyterlab==4.6.4
+ipykernel==7.4.0

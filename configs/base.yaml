@@ -1,0 +1,44 @@
+# Базовый конфиг: все параметры, которые фиксируются для всех экспериментов.
+# Сетки (grid_*.yaml) и подбор η (lr_sweep.yaml) переопределяют только перечисленные в них поля.
+# Схема и проверки — src/grokking/config.py, описание — docs/ARCHITECTURE.md §4.
+
+experiment:
+  name: base
+  output_root: results
+
+data:
+  q: 97                 # простое, q ~ O(100) -> 9409 пар
+  train_frac: 0.4       # ~3764 пары в train, ~5645 в test
+  split_seed: 0         # разбиение одно для всех экспериментов
+
+model:
+  d_hidden: 256
+  n_hidden_layers: 1    # 194 -> 256 -> 97
+  activation: relu
+
+optimizer:
+  name: adam            # без встроенного weight decay: регуляризация только явным штрафом
+  lr: 1.0e-3
+  betas: [0.9, 0.98]
+  eps: 1.0e-8
+
+regularization:
+  kind: l2              # none | l1 | l2
+  rho: 1.0e-4           # loss = CE + rho * R(theta); R = sum|w| (L1) или sum w^2 (L2)
+  apply_to: weights     # смещения не штрафуются
+
+training:
+  epochs: 20000         # полнобатчевое обучение: эпоха = шаг; одинаково для L1 и L2 (пилот: L1 медленный)
+  dtype: float32
+
+eval:
+  every: 10             # частота записи метрик, эпох
+  checkpoint_steps: []  # эпохи для сохранения весов (для анализа Фурье-структуры)
+
+replicas:
+  seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+runtime:
+  device: auto          # auto | cpu | cuda
+  deterministic: true
+  threads: 4

@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Окружения
+.venv/
+venv/
+env/
+
+# Инструменты
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+.vscode/
+.idea/
+.DS_Store
+
+# Результаты обучения: тяжёлые, воспроизводятся командами из README.
+# Сводные таблицы и графики для отчёта коммитятся в report/.
+results/
+pilot_runs/
+*.pt
+*.ckpt
