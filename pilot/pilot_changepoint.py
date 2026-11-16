@@ -12,7 +12,7 @@
 
 С флагом --plot дополнительно рисует кривые одной реплики (выбор по --rho и --seed
 в первом из переданных запусков) с отмеченными t_mem и t_grok, с флагом --plot-sweep —
-точность на train и test для всех rho первого запуска.
+точность на train и test для всех rho первого запуска. Отрисовка — в pilot_plotting.py.
 
 Пример запуска:
     python pilot/pilot_changepoint.py pilot_runs/l2_lr1e-3 pilot_runs/l1_lr1e-3
@@ -24,23 +24,9 @@ import argparse
 import json
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 
-# Цвета: первые два слота категориальной палитры, текст и сетка — нейтральные
-COLOR_TRAIN = "#2a78d6"
-COLOR_TEST = "#eb6834"
-COLOR_MARK = "#8a8984"
-COLOR_TEXT = "#0b0b0b"
-COLOR_TEXT_MUTED = "#52514e"
-COLOR_GRID = "#e4e3df"
-COLOR_SURFACE = "#fcfcfb"
-# Упорядоченная шкала для rho: один тон, от светлого к тёмному (проверена валидатором палитры)
-RHO_RAMP = ["#86b6ef", "#3987e5", "#1c5cab", "#0d366b"]
-COLOR_CONTROL = "#8a8984"
+from pilot_plotting import plot_replica, plot_rho_sweep
 
 MEM_THRESHOLD = 0.99
 GEN_THRESHOLD = 0.95
@@ -102,86 +88,14 @@ def detect(steps: np.ndarray, train_acc: np.ndarray, test_acc: np.ndarray) -> di
     return {"outcome": outcome, "t_mem": t_mem, "t_grok": t_grok, "t_thr50": t_thr50, "jump": jump}
 
 
-def plot_replica(m, r: int, det: dict, title: str, path: Path) -> None:
-    """Точность и лосс одной реплики по эпохам (лог-шкала) с отметками t_mem и t_grok."""
-    steps = np.maximum(m["step"], 1)
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4.2), facecolor=COLOR_SURFACE)
-    panels = [
-        (axes[0], "train_acc", "test_acc", "Точность", "linear"),
-        (axes[1], "train_loss", "test_loss", "Перекрёстная энтропия", "log"),
-    ]
-    for ax, key_train, key_test, ylabel, yscale in panels:
-        ax.set_facecolor(COLOR_SURFACE)
-        ax.plot(steps, m[key_train][:, r], color=COLOR_TRAIN, lw=2, label="train")
-        ax.plot(steps, m[key_test][:, r], color=COLOR_TEST, lw=2, label="test")
-        # Подписи над областью графика: t_mem слева от своей линии, t_grok — справа
-        for t, name, dx, ha in [(det["t_mem"], "t_mem", -4, "right"), (det["t_grok"], "t_grok", 4, "left")]:
-            if t is not None:
-                ax.axvline(t, color=COLOR_MARK, lw=1, ls="--")
-                ax.annotate(
-                    f"{name} = {t}", xy=(t, 1.0), xycoords=("data", "axes fraction"),
-                    xytext=(dx, 3), textcoords="offset points", ha=ha, va="bottom",
-                    fontsize=9, color=COLOR_TEXT_MUTED,
-                )
-        ax.set_xscale("log")
-        ax.set_yscale(yscale)
-        ax.set_xlabel("Эпоха (лог. шкала)", color=COLOR_TEXT_MUTED)
-        ax.set_ylabel(ylabel, color=COLOR_TEXT_MUTED)
-        ax.grid(True, color=COLOR_GRID, lw=0.8)
-        ax.tick_params(colors=COLOR_TEXT_MUTED)
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-        ax.legend(frameon=False, loc="center left", labelcolor=COLOR_TEXT)
-    fig.suptitle(title, color=COLOR_TEXT, fontsize=11)
-    fig.tight_layout()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=130, facecolor=COLOR_SURFACE)
-    plt.close(fig)
+def run_args(run_dir: Path) -> dict:
+    """Параметры запуска, сохранённые pilot_grokking.py в summary.json."""
+    return json.loads((run_dir / "summary.json").read_text())["args"]
 
 
-def plot_rho_sweep(m, seed: int, title: str, path: Path) -> None:
-    """Точность на train и test для всех rho одного запуска (один seed).
-
-    rho = 0 рисуется серым пунктиром как контроль, ненулевые rho — шкалой одного тона:
-    чем больше rho, тем темнее линия. Поддерживается до len(RHO_RAMP) ненулевых rho.
-    """
-    steps = np.maximum(m["step"], 1)
-    replicas = [r for r in range(len(m["seed"])) if m["seed"][r] == seed]
-    nonzero = sorted({float(m["rho"][r]) for r in replicas if m["rho"][r] > 0})
-    if len(nonzero) > len(RHO_RAMP):
-        raise ValueError(f"не больше {len(RHO_RAMP)} ненулевых rho на графике, получено {len(nonzero)}")
-    # Самые тёмные шаги шкалы — самым большим rho
-    colors = dict(zip(nonzero, RHO_RAMP[len(RHO_RAMP) - len(nonzero):]))
-
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4.2), facecolor=COLOR_SURFACE, sharey=True)
-    for ax, key, name in [(axes[0], "train_acc", "train"), (axes[1], "test_acc", "test")]:
-        ax.set_facecolor(COLOR_SURFACE)
-        for r in sorted(replicas, key=lambda i: m["rho"][i]):
-            rho = float(m["rho"][r])
-            if rho == 0:
-                ax.plot(steps, m[key][:, r], color=COLOR_CONTROL, lw=2, ls="--", label="ρ = 0 (контроль)")
-            else:
-                ax.plot(steps, m[key][:, r], color=colors[rho], lw=2, label=f"ρ = {rho:g}")
-        ax.set_xscale("log")
-        ax.set_title(f"Точность на {name}", color=COLOR_TEXT, fontsize=10)
-        ax.set_xlabel("Эпоха (лог. шкала)", color=COLOR_TEXT_MUTED)
-        ax.grid(True, color=COLOR_GRID, lw=0.8)
-        ax.tick_params(colors=COLOR_TEXT_MUTED)
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-    axes[0].set_ylabel("Точность", color=COLOR_TEXT_MUTED)
-    axes[1].legend(frameon=False, loc="upper left", labelcolor=COLOR_TEXT, fontsize=9)
-    fig.suptitle(title, color=COLOR_TEXT, fontsize=11)
-    fig.tight_layout()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=130, facecolor=COLOR_SURFACE)
-    plt.close(fig)
-
-
-def run_title(run_dir: Path, extra: str) -> str:
-    """Заголовок графика из параметров запуска, сохранённых в summary.json."""
-    a = json.loads((run_dir / "summary.json").read_text())["args"]
-    return f"Сложение по модулю {a['q']}: {a['reg'].upper()}, {a['optimizer'].capitalize()}, η = {a['lr']:g}{extra}"
+def run_title(args: dict, extra: str) -> str:
+    """Заголовок графика из параметров запуска."""
+    return f"Сложение по модулю {args['q']}: {args['reg'].upper()}, {args['optimizer'].capitalize()}, η = {args['lr']:g}{extra}"
 
 
 def main():
@@ -201,13 +115,14 @@ def main():
             raise SystemExit(f"в {args.run_dirs[0]} нет реплики rho={args.rho}, seed={args.seed}")
         r = int(matches[0])
         det = detect(m["step"], m["train_acc"][:, r], m["test_acc"][:, r])
-        title = run_title(args.run_dirs[0], f", ρ = {args.rho:g}, seed = {args.seed}")
-        plot_replica(m, r, det, title, args.plot)
+        a = run_args(args.run_dirs[0])
+        title = run_title(a, f", ρ = {args.rho:g}, seed = {args.seed}")
+        plot_replica(m, r, det, a["q"], title, args.plot)
         print(f"график сохранён: {args.plot}")
 
     if args.plot_sweep is not None:
         m = np.load(args.run_dirs[0] / "metrics.npz")
-        title = run_title(args.run_dirs[0], f", seed = {args.seed}")
+        title = run_title(run_args(args.run_dirs[0]), f", seed = {args.seed}")
         plot_rho_sweep(m, args.seed, title, args.plot_sweep)
         print(f"график сохранён: {args.plot_sweep}")
 

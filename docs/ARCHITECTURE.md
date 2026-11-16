@@ -89,7 +89,8 @@ grokking-modular-addition/
 │   └── test_stats.py
 ├── pilot/
 │   ├── pilot_grokking.py        # однофайловый прототип обучения; источник логики для src/
-│   └── pilot_changepoint.py     # прототип критерия перехода и графиков пилота
+│   ├── pilot_changepoint.py     # прототип критерия перехода
+│   └── pilot_plotting.py        # графики пилота: единый стиль, читаемые оси
 ├── docs/                        # архитектура, методология, план, результаты пилота
 ├── results/                     # в .gitignore, кроме сводных таблиц
 └── report/

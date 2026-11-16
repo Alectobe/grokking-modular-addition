@@ -22,13 +22,11 @@ import math
 import time
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
+
+from pilot_plotting import plot_run_curves
 
 
 def make_dataset(q: int, train_frac: float, split_seed: int):
@@ -201,22 +199,13 @@ def run(args):
     meta = {"args": vars(args), "elapsed_sec": elapsed, "device": str(device), "summary": summary}
     (out / "summary.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False))
 
-    # Кривые точности и лосса, ось эпох — логарифмическая
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.5))
-    steps = np.maximum(arrays["step"], 1)
-    for r in range(len(replica_seed)):
-        label = f"rho={replica_rho[r]:g}, seed={replica_seed[r]}"
-        line = axes[0].plot(steps, arrays["train_acc"][:, r], lw=1, ls="--")[0]
-        axes[0].plot(steps, arrays["test_acc"][:, r], lw=1.5, color=line.get_color(), label=label)
-        axes[1].plot(steps, arrays["train_loss"][:, r], lw=1, ls="--", color=line.get_color())
-        axes[1].plot(steps, arrays["test_loss"][:, r], lw=1.5, color=line.get_color())
-    axes[0].set(xscale="log", xlabel="эпоха", ylabel="точность", title="точность (пунктир — train, сплошная — test)")
-    axes[1].set(xscale="log", yscale="log", xlabel="эпоха", ylabel="CE", title="функция потерь (пунктир — train)")
-    axes[0].legend(fontsize=7, loc="upper left")
-    fig.suptitle(f"q={args.q}, frac={args.train_frac}, {args.optimizer}, reg={args.reg}, lr={args.lr:g}")
-    fig.tight_layout()
-    fig.savefig(out / "curves.png", dpi=110)
-    plt.close(fig)
+    # Кривые точности и перекрёстной энтропии (оси — см. pilot_plotting.py)
+    plot_run_curves(
+        arrays, replica_rho, replica_seed, args.q,
+        title=f"Сложение по модулю {args.q}: доля train {args.train_frac}, {args.optimizer}, "
+              f"{args.reg.upper()}, η = {args.lr:g}",
+        path=out / "curves.png",
+    )
 
     print(f"{out}: {elapsed:.1f} c, устройство {device}")
     for s in summary:
