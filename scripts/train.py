@@ -11,9 +11,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from grokking.config import job_id, load_config  # noqa: E402
-from grokking.grid import job_dir  # noqa: E402
-from grokking.train import train_job  # noqa: E402
+from grokking.config import job_id, load_config
+from grokking.grid import job_dir
+from grokking.train import train_job
 
 
 def main() -> None:

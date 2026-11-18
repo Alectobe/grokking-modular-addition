@@ -40,7 +40,7 @@ def make_modular_addition(q: int, train_frac: float, split_seed: int) -> Modular
 
     g = torch.Generator().manual_seed(split_seed)
     perm = torch.randperm(q * q, generator=g)
-    n_train = int(round(train_frac * q * q))
+    n_train = round(train_frac * q * q)
     idx_train, idx_test = perm[:n_train], perm[n_train:]
     return ModularAdditionData(
         q=q,

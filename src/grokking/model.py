@@ -1,6 +1,7 @@
 """BatchedMLP: R независимых полносвязных сетей, веса которых хранятся в общих тензорах."""
 from __future__ import annotations
 
+import itertools
 import math
 from collections.abc import Sequence
 
@@ -25,7 +26,7 @@ class BatchedMLP(torch.nn.Module):
         super().__init__()
         n_replicas = len(seeds)
         dims = [d_in] + [d_hidden] * n_hidden_layers + [d_out]
-        weights = [torch.empty(n_replicas, a, b) for a, b in zip(dims[:-1], dims[1:])]
+        weights = [torch.empty(n_replicas, a, b) for a, b in itertools.pairwise(dims)]
         biases = [torch.empty(n_replicas, b) for b in dims[1:]]
 
         for r, seed in enumerate(seeds):

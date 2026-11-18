@@ -14,9 +14,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from grokking.config import job_id  # noqa: E402
-from grokking.grid import expand_grid, job_dir, pending_jobs, shard  # noqa: E402
-from grokking.train import train_job  # noqa: E402
+from grokking.config import job_id
+from grokking.grid import expand_grid, job_dir, pending_jobs, shard
+from grokking.train import train_job
 
 
 def parse_shard(text: str) -> tuple[int, int]:
@@ -29,12 +29,16 @@ def main() -> None:
     parser.add_argument("--grid", type=Path, nargs="+", required=True, help="YAML экспериментов")
     parser.add_argument("--shard", type=parse_shard, default=(1, 1), help="часть i/n, например 1/3")
     parser.add_argument("--dry-run", action="store_true", help="только показать задания")
+    parser.add_argument("--order", choices=["config", "lr"], default="config",
+                        help="порядок выполнения: как в --grid или по возрастанию lr (L2 и L1 вперемешку)")
     args = parser.parse_args()
 
     jobs = [cfg for path in args.grid for cfg in expand_grid(path)]
     # Состав части определяется по job_id, а порядок выполнения — порядком конфигов в --grid
     selected_ids = {job_id(cfg) for cfg in shard(jobs, *args.shard)}
     selected = [cfg for cfg in jobs if job_id(cfg) in selected_ids]
+    if args.order == "lr":
+        selected = sorted(selected, key=lambda cfg: cfg.optimizer.lr)  # сортировка устойчивая
     todo = pending_jobs(selected)
     replicas = sum(cfg.n_replicas for cfg in todo)
     print(f"заданий всего {len(jobs)}, в части {len(selected)}, осталось {len(todo)} ({replicas} реплик)", flush=True)

@@ -116,7 +116,7 @@ def _read_yaml(path: Path) -> dict[str, Any]:
     with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     if not isinstance(raw, dict):
-        raise ValueError(f"{path}: ожидался YAML-словарь")
+        raise TypeError(f"{path}: ожидался YAML-словарь")
     return raw
 
 
@@ -126,7 +126,7 @@ def _check_base_schema(raw: dict[str, Any], path: Path) -> None:
         if section not in SCHEMA:
             raise ValueError(f"{path}: неизвестная секция '{section}'")
         if not isinstance(keys, dict):
-            raise ValueError(f"{path}: секция '{section}' должна быть словарём")
+            raise TypeError(f"{path}: секция '{section}' должна быть словарём")
         unknown = set(keys) - SCHEMA[section]
         if unknown:
             raise ValueError(f"{path}: неизвестные ключи в '{section}': {sorted(unknown)}")
