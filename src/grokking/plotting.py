@@ -424,42 +424,48 @@ def plot_norm_dynamics(rows: list[tuple[str, dict, int, object]], path: Path) ->
 # ---------- механизм: Фурье-структура первого слоя ----------
 
 
-def plot_fourier(runs: list[dict], path: Path) -> None:
-    """Слева — доля мощности в 5 главных частотах по эпохам, справа — спектр весов в конце обучения.
+def plot_fourier(runs: list[dict], example: dict, path: Path) -> None:
+    """Механизм перехода: периодичность нейронов и число живых нейронов по эпохам, пример весов.
 
-    runs — список словарей: label, color, ls, steps, share (по контрольным точкам), t_grok,
-    final_power (мощность по частотам k = 1..q//2), init_power.
+    runs — словари: label, color, ls, steps, periodicity, alive, t_grok.
+    example — спектры нескольких нейронов по входу x1 в конце обучения: label, spectra, names, init_spectrum.
     """
-    fig, (ax_share, ax_spec) = plt.subplots(1, 2, figsize=(13, 4.8), facecolor=COLOR_SURFACE,
-                                            gridspec_kw={"width_ratios": [1.15, 1]})
-    for ax in (ax_share, ax_spec):
+    fig, axes = plt.subplots(1, 3, figsize=(16, 4.6), facecolor=COLOR_SURFACE,
+                             gridspec_kw={"width_ratios": [1.1, 1, 1]})
+    ax_per, ax_alive, ax_ex = axes
+    for ax in axes:
         style_axes(ax)
     all_steps = np.unique(np.concatenate([run["steps"] for run in runs]))
     for run in runs:
-        steps, share = np.asarray(run["steps"]), np.asarray(run["share"])
+        steps = np.asarray(run["steps"])
         mask = steps > 0
-        ax_share.plot(steps[mask], share[mask], color=run["color"], ls=run["ls"], lw=2, marker="o", ms=3.5,
-                      label=run["label"])
-        if run["t_grok"] is not None:
-            y = float(np.interp(np.log(run["t_grok"]), np.log(steps[mask]), share[mask]))
-            ax_share.plot([run["t_grok"]], [y], marker="D", ms=8, color=run["color"], mec=COLOR_SURFACE, mew=1.2,
-                          ls="none")
-    setup_epoch_axis(ax_share, all_steps)
-    ax_share.set_ylim(0, 1.02)
-    ax_share.yaxis.set_major_formatter(PercentFormatter(xmax=1.0, decimals=0))
-    ax_share.set_ylabel("Доля мощности в 5 главных частотах, %", color=COLOR_TEXT_MUTED)
-    ax_share.set_title("Периодичность признаков по ходу обучения (ромб — t_grok)", color=COLOR_TEXT, fontsize=10)
-    legend(ax_share, loc="upper left", fontsize=8)
+        for ax, key in ((ax_per, "periodicity"), (ax_alive, "alive")):
+            values = np.asarray(run[key], dtype=float)
+            ax.plot(steps[mask], values[mask], color=run["color"], ls=run["ls"], lw=2, marker="o", ms=3.5,
+                    label=run["label"])
+            if run["t_grok"] is not None:
+                y = float(np.interp(np.log(run["t_grok"]), np.log(steps[mask]), values[mask]))
+                ax.plot([run["t_grok"]], [y], marker="D", ms=8, color=run["color"], mec=COLOR_SURFACE, mew=1.2,
+                        ls="none")
+    for ax in (ax_per, ax_alive):
+        setup_epoch_axis(ax, all_steps, label="Эпоха")
+    ax_per.set_ylim(0, 1.0)
+    ax_per.yaxis.set_major_formatter(PercentFormatter(xmax=1.0, decimals=0))
+    ax_per.set_ylabel("Доля мощности нейрона в его главной частоте", color=COLOR_TEXT_MUTED)
+    ax_per.set_title("Периодичность нейронов (ромб — t_grok)", color=COLOR_TEXT, fontsize=10)
+    legend(ax_per, loc="upper left", fontsize=8)
+    ax_alive.set_ylim(0, 270)
+    ax_alive.set_ylabel("Живых нейронов из 256", color=COLOR_TEXT_MUTED)
+    ax_alive.set_title("Сколько нейронов участвует в решении", color=COLOR_TEXT, fontsize=10)
 
-    k = np.arange(1, len(runs[0]["final_power"]) + 1)
-    ax_spec.plot(k, runs[0]["init_power"], color=COLOR_GRID, lw=2, label="инициализация")
-    for run in runs:
-        if run.get("show_spectrum"):
-            ax_spec.plot(k, run["final_power"], color=run["color"], ls=run["ls"], lw=1.8, label=run["label"])
-    ax_spec.set_xlim(1, k[-1])
-    ax_spec.yaxis.set_major_formatter(PercentFormatter(xmax=1.0, decimals=0))
-    ax_spec.set_xlabel("Частота k (по кругу остатков 0…96)", color=COLOR_TEXT_MUTED)
-    ax_spec.set_ylabel("Доля мощности, %", color=COLOR_TEXT_MUTED)
-    ax_spec.set_title("Спектр весов первого слоя по входу x1 в конце обучения", color=COLOR_TEXT, fontsize=10)
-    legend(ax_spec, loc="upper right", fontsize=8)
-    save(fig, path, "Фурье-структура весов первого слоя: обобщающее решение периодично")
+    k = np.arange(1, len(example["init_spectrum"]) + 1)
+    ax_ex.plot(k, example["init_spectrum"], color=COLOR_MARK, lw=1.2, label="случайный нейрон при инициализации")
+    for spectrum, color, name in zip(example["spectra"], RAMP3[::-1], example["names"]):
+        ax_ex.plot(k, spectrum, color=color, lw=1.8, label=name)
+    ax_ex.set_xlim(1, k[-1])
+    ax_ex.yaxis.set_major_formatter(PercentFormatter(xmax=1.0, decimals=0))
+    ax_ex.set_xlabel("Частота k по кругу остатков (1…48)", color=COLOR_TEXT_MUTED)
+    ax_ex.set_ylabel("Доля мощности нейрона", color=COLOR_TEXT_MUTED)
+    ax_ex.set_title(example["label"], color=COLOR_TEXT, fontsize=10)
+    legend(ax_ex, loc="upper right", fontsize=8)
+    save(fig, path, "Механизм перехода: нейроны первого слоя становятся синусоидами по входу")
