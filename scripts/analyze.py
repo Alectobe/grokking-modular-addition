@@ -94,8 +94,9 @@ def main() -> None:
     # ---------- кривые для иллюстраций ----------
     grid_jobs = list(iter_jobs(args.results / "grid_l2")) + list(iter_jobs(args.results / "grid_l1"))
     grid = det[det.experiment.isin(["grid_l2", "grid_l1"])].copy()
-    job, r = find_replica(grid_jobs, "l2", 1e-3, 1e-4, 0)
-    row = det_row(det, "grid_l2", "l2", 1e-3, 1e-4, 0)
+    # Демонстрация п. 2 — реплика из подбора η, чтобы числа совпадали с таблицей lr_sweep
+    job, r = find_replica(sweep_jobs, "l2", 1e-3, 1e-4, 0)
+    row = det_row(det, "lr_sweep", "l2", 1e-3, 1e-4, 0)
     plot_replica(job.metrics, r, row.t_mem, row.t_grok, q,
                  f"Сложение по модулю {q}: L2, Adam, η = 1e-3, ρ = 1e-4, seed = 0", figures / "grokking_demo.png")
     for kind, name in (("l2", "L2"), ("l1", "L1")):

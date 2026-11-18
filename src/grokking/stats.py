@@ -70,9 +70,10 @@ def summarize(det: pd.DataFrame, by: tuple[str, ...] = ("reg_kind", "lr", "rho")
                 **{f"n_{o}": int(counts.get(o, 0)) for o in
                    ("grokking", "partial", "no_generalization", "simultaneous", "no_memorization")},
                 "t_mem_median": float(group.t_mem.median()),
-                "t_grok_median": km_quantile(times, observed, 0.5) if observed.any() else math.nan,
-                "t_grok_q25": km_quantile(times, observed, 0.25) if observed.any() else math.nan,
-                "t_grok_q75": km_quantile(times, observed, 0.75) if observed.any() else math.nan,
+                # если переход не наступил ни у одной реплики, t_grok > T: квантили бесконечны
+                "t_grok_median": km_quantile(times, observed, 0.5) if len(times) else math.nan,
+                "t_grok_q25": km_quantile(times, observed, 0.25) if len(times) else math.nan,
+                "t_grok_q75": km_quantile(times, observed, 0.75) if len(times) else math.nan,
                 "ratio_median": float(ratio.median()) if len(ratio) else math.nan,
                 "t_gen95_median": km_quantile(g_times, g_observed, 0.5) if len(g_times) else math.nan,
                 "share_gen95": float(g_observed.mean()) if len(g_observed) else math.nan,
@@ -240,10 +241,12 @@ def norm_tests(det: pd.DataFrame) -> pd.DataFrame:
     l1_all, l2_all = det[(det.reg_kind == "l1") & (det.rho > 0)], det[(det.reg_kind == "l2") & (det.rho > 0)]
 
     def paired(name, before, after):
-        result = stats.wilcoxon(after, before)
+        # без ненулевых разностей критерий Уилкоксона не определён: изменений нет, p = 1
+        p = 1.0 if np.allclose(before, after) else float(stats.wilcoxon(after, before).pvalue)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            change = float(np.median(after / before))
         rows.append({"test": name, "n": len(before), "median_before": float(np.median(before)),
-                     "median_after": float(np.median(after)), "median_change": float(np.median(after / before)),
-                     "p": float(result.pvalue)})
+                     "median_after": float(np.median(after)), "median_change": change, "p": p})
 
     paired("L2 с grokking: L2-норма, пик → конец", l2_grok.l2_norm_peak.to_numpy(), l2_grok.l2_norm_end.to_numpy())
     paired("L2 с grokking: L2-норма, t_mem → конец", l2_grok.l2_norm_at_mem.to_numpy(), l2_grok.l2_norm_end.to_numpy())
