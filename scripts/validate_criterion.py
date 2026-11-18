@@ -159,10 +159,11 @@ def main() -> None:
 
     # Доля распознанных переходов зависит от величины скачка: скачок < 0.3 по определению не переход
     curves = synth_all[synth_all.method == METHODS[0]]
-    bins = pd.cut(curves.high, [0.35, 0.5, 0.7, 0.95, 1.0], include_lowest=True)
+    bins = pd.cut(curves.high, [0.35, 0.5, 0.7, 0.95, 1.0], include_lowest=True,
+                  labels=["35–50%", "50–70%", "70–95%", "95–100%"])
     recognition = curves.groupby(bins, observed=True).detected.agg(["size", "mean"]).reset_index()
-    recognition.columns = ["итоговый уровень test_acc (high)", "кривых", "распознан переход, доля"]
-    recognition["итоговый уровень test_acc (high)"] = recognition["итоговый уровень test_acc (high)"].astype(str)
+    recognition.columns = ["итоговый уровень test_acc", "кривых", "распознан переход, доля"]
+    recognition["итоговый уровень test_acc"] = recognition["итоговый уровень test_acc"].astype(str)
     save_table(recognition, args.tables / "criterion_recognition")
 
     # Точность локализации — только на распознанных кривых

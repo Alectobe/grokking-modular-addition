@@ -21,8 +21,8 @@ def format_value(value, digits: int = 3) -> str:
     if isinstance(value, float):
         if value != 0 and (abs(value) < 1e-3 or abs(value) >= 1e5):
             return f"{value:.2e}"
-        if float(value).is_integer() and abs(value) >= 10:
-            return str(int(value))
+        if abs(value) >= 100 or (float(value).is_integer() and abs(value) >= 10):
+            return str(round(value))  # эпохи и нормы: дробная часть не нужна
         return f"{value:.{digits}g}"
     return str(value)
 
