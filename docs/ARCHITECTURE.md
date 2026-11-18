@@ -70,20 +70,18 @@ grokking-modular-addition/
 │   ├── grid.py                  # разворачивание сетки в задания, возобновление
 │   ├── stats.py                 # статистический анализ
 │   ├── plotting.py              # единый стиль графиков
+│   ├── report.py                # таблицы для отчёта: CSV и Markdown
 │   └── utils.py                 # фиксация seed, детерминизм, выбор устройства
 ├── scripts/
 │   ├── train.py                 # обучить по одному конфигу
-│   ├── run_grid.py              # обучить всю сетку (параллельно, с возобновлением)
+│   ├── run_grid.py              # обучить всю сетку (с возобновлением и --shard)
 │   ├── detect.py                # results/ -> detections.csv
-│   └── analyze.py               # detections.csv -> таблицы и графики
-├── notebooks/
-│   ├── 01_grokking_demo.ipynb       # п. 1–2: данные, подбор η, кривые
-│   ├── 02_criterion.ipynb           # п. 3: критерий и его проверка
-│   ├── 03_grid_analysis.ipynb       # п. 4: зависимость от типа, η, ρ
-│   └── 04_mechanism.ipynb           # доп.: нормы, разреженность, Фурье-структура
+│   ├── validate_criterion.py    # п. 3: проверка критерия на синтетике и реальных запусках
+│   └── analyze.py               # п. 2 и п. 4: таблицы, графики, гипотезы H1–H5
 ├── tests/
+│   ├── test_config.py
 │   ├── test_data.py
-│   ├── test_model.py
+│   ├── test_model.py            # в том числе совпадение с пилотом бит в бит
 │   ├── test_regularization.py
 │   ├── test_detection.py
 │   └── test_stats.py
@@ -92,15 +90,16 @@ grokking-modular-addition/
 │   ├── pilot_changepoint.py     # прототип критерия перехода
 │   └── pilot_plotting.py        # графики пилота: единый стиль, читаемые оси
 ├── docs/                        # архитектура, методология, план, результаты пилота
-├── results/                     # в .gitignore, кроме сводных таблиц
+├── results/                     # в .gitignore, кроме detections.csv
 └── report/
-    ├── figures/                 # графики, попавшие в отчёт
-    └── report.pdf
+    ├── REPORT.md                # текстовый отчёт
+    ├── figures/                 # графики отчёта (строятся скриптами)
+    └── tables/                  # таблицы отчёта (CSV + Markdown) и results.json
 ```
 
-Ноутбуки только **читают** результаты и строят графики. Обучение и детекция живут в `src/`
-и вызываются из `scripts/`. Ноутбук, который обучает модель внутри себя, трудно
-воспроизвести и проверить.
+Обучение и детекция живут в `src/` и вызываются из `scripts/`. Вместо запланированных
+ноутбуков все таблицы и графики строят `scripts/validate_criterion.py` и `scripts/analyze.py`:
+из-за сжатых сроков так быстрее, а каждый результат воспроизводится одной командой из README.
 
 ---
 
@@ -142,7 +141,8 @@ results/<experiment>/<job_id>/
     └── step_<t>.pt
 ```
 
-`job_id` — короткий хеш развёрнутого конфига. Повторный запуск сетки пропускает задания,
+`job_id` — `<тип>-lr<η>-<хеш>`, где хеш — первые 10 символов sha1 развёрнутого конфига
+(например, `l2-lr0.001-cbefd5534c`). Повторный запуск сетки пропускает задания,
 у которых уже есть `meta.json` со статусом `done`.
 
 ### `metrics.npz`
@@ -341,21 +341,30 @@ class DetectionParams:
     min_jump: float = 0.3
     simultaneous_threshold: float = 0.5
     tail_fraction: float = 0.05
+    smooth_window: int = 5
 
 @dataclass(frozen=True)
 class Detection:
-    outcome: Literal["grokking", "partial", "simultaneous", "no_generalization", "no_memorization"]
+    outcome: str        # grokking | partial | simultaneous | no_generalization | no_memorization
     t_mem: int | None
     t_grok: int | None
     censored: bool
     jump: float | None
+    t_grok_thr50: int | None
+    t_grok_logderiv: int | None
+    t_gen95: int | None
+    censored_gen95: bool
+    end_test_acc: float
+    final_train_acc: float
+    final_test_acc: float
 
-def changepoint_l2(values: np.ndarray) -> tuple[int, float]      # индекс разрыва, SSE; O(n)
-def detect(steps: np.ndarray, train_acc: np.ndarray, test_acc: np.ndarray,
-           params: DetectionParams) -> Detection
-def threshold_crossing(steps, test_acc, start_idx, level=0.5) -> int | None
+def changepoint_l2(values) -> tuple[int, float]                  # индекс разрыва, SSE; O(n)
+def detect(steps, train_acc, test_acc, params=None) -> Detection
+def threshold_crossing(steps, test_acc, start_idx, level) -> int | None
 def max_log_derivative(steps, test_acc, start_idx, window) -> int | None
-def synthetic_curve(steps, t_star, width, low, high, noise, rng) -> np.ndarray
+def sigmoid_midpoint(steps, test_acc, start_idx, t_init) -> int | None
+def stable_crossing(steps, values, level) -> int | None          # t_gen95: с этой эпохи и до конца >= level
+def synthetic_curves(steps, t_mem, t_star, width, low, high, noise, rng, dip=None) -> (train, test)
 ```
 
 Определение критерия и его проверка — в [EXPERIMENTS.md §3](EXPERIMENTS.md#3-критерий-момента-перехода-п-3).
@@ -364,7 +373,8 @@ def synthetic_curve(steps, t_star, width, low, high, noise, rng) -> np.ndarray
 
 ```python
 def expand_grid(grid_cfg_path: Path) -> list[Config]        # одно задание = (тип, η)
-def pending_jobs(jobs: list[Config], root: Path) -> list[Config]
+def job_dir(cfg: Config) -> Path                            # <output_root>/<experiment>/<job_id>
+def pending_jobs(jobs: list[Config]) -> list[Config]
 def shard(jobs: list[Config], index: int, count: int) -> list[Config]  # детерминированно по job_id
 ```
 
@@ -375,17 +385,22 @@ def shard(jobs: list[Config], index: int, count: int) -> list[Config]  # дет�
 ### `stats.py`
 
 ```python
-def summarize(det: pd.DataFrame) -> pd.DataFrame       # по конфигурациям: доля исходов, медиана t_grok, 95% ДИ
-def km_median(t: np.ndarray, censored: np.ndarray) -> tuple[float, tuple[float, float]]
-def trend_test(det, by: str, within: list[str]) -> pd.DataFrame        # Спирмен / Джонкхир–Терпстра
-def pairwise_mwu(det, factor: str, within: list[str]) -> pd.DataFrame  # Манн–Уитни + Холм + δ Клиффа
-def scaling_fit(det, kind: str) -> ScalingFit           # log t_grok ~ log η + log ρ
+def summarize(det) -> pd.DataFrame                  # по ячейкам: исходы, медиана и квартили t_grok (Каплан–Мейер)
+def km_quantile(times, observed, q) -> float        # квантиль времени до события с учётом цензуры
+def spearman_trend(det, x, within) -> pd.DataFrame  # H1/H2: Спирмен log x ↔ t_grok, поправка Холма
+def scaling_fit(det, kind) -> dict                  # H3: log t_grok = c − α·log η − β·log ρ, проверка α = β
+def compare_kinds_best(det) -> pd.DataFrame         # H4: лучшее t_grok при каждом η, L2 против L1
+def compare_kinds_completeness(det) -> dict         # H4: доля полного обобщения, тест Фишера
+def compare_slopes(fit_a, fit_b) -> dict            # H4: разность наклонов β
+def norm_tests(det) -> pd.DataFrame                 # H5: нормы и разреженность весов
+def holm(p), cliffs_delta(a, b), bootstrap_median_ratio(a, b)
 ```
 
 ### `plotting.py`
 
-Один модуль задаёт общий стиль: шрифты, палитру, лог-шкалу по эпохам, подписи осей
-с единицами. Все графики отчёта строятся функциями отсюда, а не вручную в ноутбуках.
+Один модуль задаёт общий стиль: палитру, лог-шкалу по эпохам с подписями обычными
+числами, точность в процентах, уровень случайного угадывания на графике кросс-энтропии.
+Все графики отчёта строятся функциями отсюда.
 
 ### `utils.py`
 
@@ -393,7 +408,7 @@ def scaling_fit(det, kind: str) -> ScalingFit           # log t_grok ~ log η + 
 def set_global_seed(seed: int) -> None            # random, numpy, torch
 def enable_determinism() -> None                  # torch.use_deterministic_algorithms(True), CUBLAS_WORKSPACE_CONFIG
 def resolve_device(name: str) -> torch.device
-def environment_info() -> dict                    # версии, git commit, устройство -> meta.json
+def environment_info(device) -> dict              # версии, git commit, устройство -> meta.json
 ```
 
 ---
