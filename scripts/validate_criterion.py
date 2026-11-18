@@ -150,9 +150,12 @@ def main() -> None:
     args = parser.parse_args()
     params = DetectionParams()
 
-    synth_all, example = synthetic_study(args.n_synthetic, seed=0, params=params)
-    train, test, t_star, est = example
-    plot_criterion_example(STEPS, train, test, t_star, est, args.figures / "criterion_example.png")
+    synth_all, _ = synthetic_study(args.n_synthetic, seed=0, params=params)
+    # Наглядный пример: полный переход, шум и провал после перехода (на провалах ошибается производная)
+    rng = np.random.default_rng(7)
+    train, test = synthetic_curves(STEPS, 300.0, 1500.0, 0.2, 0.0, 1.0, 0.02, rng, dip=(2600.0, 250.0, 0.35))
+    _, est = estimate_all(STEPS, train, test, params)
+    plot_criterion_example(STEPS, train, test, 1500.0, est, args.figures / "criterion_example.png")
 
     # Доля распознанных переходов зависит от величины скачка: скачок < 0.3 по определению не переход
     curves = synth_all[synth_all.method == METHODS[0]]

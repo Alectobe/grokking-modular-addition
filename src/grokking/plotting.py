@@ -60,18 +60,24 @@ def ramp(n: int) -> list[str]:
 
 
 def log_ticks(low: float, high: float) -> list[float]:
-    """Деления логарифмической оси из ряда 1-2-5 (или 1-3, или 1), не больше MAX_TICKS."""
-    ticks: list[float] = []
-    for mantissas in ([1, 2, 5], [1, 3], [1]):
+    """Деления логарифмической оси: самый частый ряд, дающий от 3 до MAX_TICKS делений.
+
+    На широком диапазоне получается 1-2-5 или 1-3, на узком (меньше порядка) — 1-1.5-2-3-...
+    """
+    options = ([1, 1.5, 2, 3, 4, 5, 6, 7, 8], [1, 2, 3, 5, 7], [1, 2, 5], [1, 3], [1])
+    candidates = []
+    for mantissas in options:
         ticks = [
             m * 10.0**e
             for e in range(math.floor(math.log10(low)), math.ceil(math.log10(high)) + 1)
             for m in mantissas
             if low <= m * 10.0**e <= high
         ]
-        if len(ticks) <= MAX_TICKS:
+        if 3 <= len(ticks) <= MAX_TICKS:
             return ticks
-    return ticks
+        candidates.append(ticks)
+    fitting = [t for t in candidates if len(t) <= MAX_TICKS]
+    return fitting[0] if fitting else candidates[-1]
 
 
 def plain_number(x: float, _pos=None) -> str:
@@ -236,21 +242,32 @@ def plot_rho_sweep(m: dict, seed: int, title: str, path: Path) -> None:
 
 
 def plot_criterion_example(steps, train, test, t_star: float, estimates: dict[str, float | None], path: Path) -> None:
-    """Синтетическая кривая с известным t* и найденные разными критериями моменты."""
+    """Синтетическая кривая с известным t*: слева целиком, справа — окрестность перехода с оценками критериев."""
     mask = steps > 0
-    fig, ax = plt.subplots(figsize=(8.5, 4.4), facecolor=COLOR_SURFACE)
-    style_axes(ax)
-    ax.plot(steps[mask], train[mask], color=COLOR_TRAIN, lw=2, label="train (синтетика)")
-    ax.plot(steps[mask], test[mask], color=COLOR_TEST, lw=2, label="test (синтетика)")
-    ax.axvline(t_star, color=COLOR_TEXT, lw=1.5, label=f"истинный t* = {t_star:.0f}")
-    styles = [("--", COLOR_MARK), (":", COLOR_TEXT_MUTED), ("-.", COLOR_MARK), ((0, (1, 3)), COLOR_TEXT)]
+    fig, (ax_full, ax_zoom) = plt.subplots(1, 2, figsize=(13, 4.6), facecolor=COLOR_SURFACE,
+                                           gridspec_kw={"width_ratios": [1.1, 1]})
+    styles = [("--", COLOR_TRAIN), (":", COLOR_TEXT), ("-.", COLOR_TEST), ((0, (1, 2)), COLOR_MARK)]
+    for ax in (ax_full, ax_zoom):
+        style_axes(ax)
+        ax.plot(steps[mask], train[mask], color=COLOR_TRAIN, lw=1.5, alpha=0.6, label="train (синтетика)")
+        ax.plot(steps[mask], test[mask], color=COLOR_TEST, lw=1.5, alpha=0.8, label="test (синтетика)")
+        ax.axvline(t_star, color=COLOR_TEXT, lw=2.5, alpha=0.35, label=f"истинный t* = {t_star:.0f}")
+        setup_accuracy_axis(ax)
     for (name, t), (ls, color) in zip(estimates.items(), styles):
         if t is not None:
-            ax.axvline(t, color=color, lw=1.3, ls=ls, label=f"{name}: {t:.0f}")
-    setup_epoch_axis(ax, steps)
-    setup_accuracy_axis(ax)
-    legend(ax, loc="center left", fontsize=8)
-    save(fig, path, "Пример синтетической кривой: истинный момент перехода и оценки критериев")
+            ax_zoom.axvline(t, color=color, lw=1.6, ls=ls, label=f"{name}: {t:.0f}")
+    setup_epoch_axis(ax_full, steps)
+    low, high = t_star / 2.5, t_star * 2.5
+    ax_zoom.set_xscale("log")
+    ax_zoom.set_xlim(low, high)
+    setup_log_axis(ax_zoom.xaxis, low, high)
+    ax_zoom.set_xlabel("Эпоха (логарифмическая шкала), окрестность перехода", color=COLOR_TEXT_MUTED)
+    ax_zoom.set_ylabel("")
+    ax_full.set_title("Кривая целиком", color=COLOR_TEXT, fontsize=10)
+    ax_zoom.set_title("Оценки критериев", color=COLOR_TEXT, fontsize=10)
+    legend(ax_full, loc="center left", fontsize=8)
+    legend(ax_zoom, loc="center left", fontsize=8)
+    save(fig, path, "Синтетическая кривая с известным моментом перехода t* и оценки критериев")
 
 
 def plot_criterion_errors(errors: dict[str, np.ndarray], path: Path) -> None:
@@ -367,7 +384,7 @@ def plot_end_accuracy(summary: pd.DataFrame, path: Path) -> None:
         ax.set_title(f"η = {sci_label(lr)}", color=COLOR_TEXT, fontsize=10)
     axes[0][0].set_ylabel("Итоговая точность на test, %", color=COLOR_TEXT_MUTED)
     legend(axes[0][0], loc="lower left")
-    save(fig, path, "Полнота обобщения: итоговая test_acc (медиана и 25–75% по seed)")
+    save(fig, path, "Итоговая точность на test (медиана и 25–75% по seed)")
 
 
 def plot_norm_dynamics(rows: list[tuple[str, dict, int, object]], path: Path) -> None:
@@ -395,8 +412,54 @@ def plot_norm_dynamics(rows: list[tuple[str, dict, int, object]], path: Path) ->
                 ax.plot(steps, m[key][mask, r], color=COLOR_TEXT_MUTED, lw=2)
                 ax.set_ylabel(ylabel, color=COLOR_TEXT_MUTED)
                 if key == "frac_small":
-                    ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0, decimals=0))
+                    # при долях в единицы процентов нужен знак после запятой, иначе подписи повторяются
+                    decimals = 1 if float(np.max(m[key][mask, r])) < 0.1 else 0
+                    ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0, decimals=decimals))
             setup_epoch_axis(ax, m["step"], label="Эпоха")
             mark_epochs(ax, [(det.t_mem, "t_mem", "left"), (det.t_grok, "t_grok", "right")], fontsize=8)
         row_axes[0].set_title(label, color=COLOR_TEXT, fontsize=10, loc="left", pad=16)
     save(fig, path, "Что происходит с весами во время перехода")
+
+
+# ---------- механизм: Фурье-структура первого слоя ----------
+
+
+def plot_fourier(runs: list[dict], path: Path) -> None:
+    """Слева — доля мощности в 5 главных частотах по эпохам, справа — спектр весов в конце обучения.
+
+    runs — список словарей: label, color, ls, steps, share (по контрольным точкам), t_grok,
+    final_power (мощность по частотам k = 1..q//2), init_power.
+    """
+    fig, (ax_share, ax_spec) = plt.subplots(1, 2, figsize=(13, 4.8), facecolor=COLOR_SURFACE,
+                                            gridspec_kw={"width_ratios": [1.15, 1]})
+    for ax in (ax_share, ax_spec):
+        style_axes(ax)
+    all_steps = np.unique(np.concatenate([run["steps"] for run in runs]))
+    for run in runs:
+        steps, share = np.asarray(run["steps"]), np.asarray(run["share"])
+        mask = steps > 0
+        ax_share.plot(steps[mask], share[mask], color=run["color"], ls=run["ls"], lw=2, marker="o", ms=3.5,
+                      label=run["label"])
+        if run["t_grok"] is not None:
+            y = float(np.interp(np.log(run["t_grok"]), np.log(steps[mask]), share[mask]))
+            ax_share.plot([run["t_grok"]], [y], marker="D", ms=8, color=run["color"], mec=COLOR_SURFACE, mew=1.2,
+                          ls="none")
+    setup_epoch_axis(ax_share, all_steps)
+    ax_share.set_ylim(0, 1.02)
+    ax_share.yaxis.set_major_formatter(PercentFormatter(xmax=1.0, decimals=0))
+    ax_share.set_ylabel("Доля мощности в 5 главных частотах, %", color=COLOR_TEXT_MUTED)
+    ax_share.set_title("Периодичность признаков по ходу обучения (ромб — t_grok)", color=COLOR_TEXT, fontsize=10)
+    legend(ax_share, loc="upper left", fontsize=8)
+
+    k = np.arange(1, len(runs[0]["final_power"]) + 1)
+    ax_spec.plot(k, runs[0]["init_power"], color=COLOR_GRID, lw=2, label="инициализация")
+    for run in runs:
+        if run.get("show_spectrum"):
+            ax_spec.plot(k, run["final_power"], color=run["color"], ls=run["ls"], lw=1.8, label=run["label"])
+    ax_spec.set_xlim(1, k[-1])
+    ax_spec.yaxis.set_major_formatter(PercentFormatter(xmax=1.0, decimals=0))
+    ax_spec.set_xlabel("Частота k (по кругу остатков 0…96)", color=COLOR_TEXT_MUTED)
+    ax_spec.set_ylabel("Доля мощности, %", color=COLOR_TEXT_MUTED)
+    ax_spec.set_title("Спектр весов первого слоя по входу x1 в конце обучения", color=COLOR_TEXT, fontsize=10)
+    legend(ax_spec, loc="upper right", fontsize=8)
+    save(fig, path, "Фурье-структура весов первого слоя: обобщающее решение периодично")

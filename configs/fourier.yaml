@@ -1,0 +1,21 @@
+# Доп. анализ: Фурье-структура весов первого слоя (docs/EXPERIMENTS.md §8).
+# Те же реплики, что и в сетке при η = 1e-3, seed 0, но с сохранением весов на выбранных эпохах.
+# Задание = тип регуляризации; в каждом — ρ ∈ {0, 3e-6, 1e-4}.
+
+base: base.yaml
+
+experiment:
+  name: fourier
+
+overrides:
+  eval.checkpoint_steps: [0, 100, 200, 300, 400, 500, 600, 800, 1000, 1200, 1400, 1600, 2000, 2500, 3000, 4000, 6000]
+  runtime.threads: 1   # считалось параллельно с сеткой: один поток не мешает ей
+
+grid:
+  jobs_over:
+    regularization.kind: [l2, l1]
+  replicas_over:
+    regularization.rho: [0.0, 3.0e-6, 1.0e-4]
+
+replicas:
+  seeds: [0]

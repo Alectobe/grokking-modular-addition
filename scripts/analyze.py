@@ -43,6 +43,11 @@ OUTCOME_NAMES = {
 }
 
 
+def percent(value: float) -> str:
+    """Доля в процентах с одним знаком после запятой: 0.9998 -> '100.0%', 0.4306 -> '43.1%'."""
+    return "—" if pd.isna(value) else f"{100 * value:.1f}%"
+
+
 def find_replica(jobs, kind: str, lr: float, rho: float, seed: int):
     """Задание и номер реплики с заданными (тип, η, ρ, seed)."""
     for job in jobs:
@@ -87,6 +92,8 @@ def main() -> None:
     sweep_table = sweep[["lr", "seed", "outcome", "t_mem", "t_grok", "end_test_acc"]].copy()
     sweep_table["outcome"] = sweep_table.outcome.map(OUTCOME_NAMES)
     sweep_table["t_grok / t_mem"] = sweep.t_grok / sweep.t_mem
+    sweep_table["lr"] = sweep_table.lr.map(sci_label)
+    sweep_table["end_test_acc"] = sweep_table.end_test_acc.map(percent)
     save_table(sweep_table.rename(columns={"lr": "η", "outcome": "исход", "end_test_acc": "итоговая test_acc"}),
                tables / "lr_sweep")
     key_numbers["lr_sweep"] = sweep[["lr", "seed", "outcome", "t_mem", "t_grok", "end_test_acc"]].to_dict("records")
@@ -110,6 +117,10 @@ def main() -> None:
                             "n_simultaneous", "n_no_memorization", "t_mem_median", "t_grok_median", "t_grok_q25",
                             "t_grok_q75", "ratio_median", "share_gen95", "end_acc_median"]].copy()
     summary_view["reg_kind"] = summary_view.reg_kind.str.upper()
+    summary_view["lr"] = summary_view.lr.map(sci_label)
+    summary_view["rho"] = summary_view.rho.map(sci_label)
+    for column in ("share_gen95", "end_acc_median"):
+        summary_view[column] = summary_view[column].map(percent)
     save_table(summary_view.rename(columns={
         "reg_kind": "тип", "lr": "η", "rho": "ρ", "n": "реплик", "n_grokking": "grokking", "n_partial": "частичное",
         "n_no_generalization": "нет обобщ.", "n_simultaneous": "без задержки", "n_no_memorization": "нет запомин.",
@@ -137,8 +148,13 @@ def main() -> None:
     h1 = spearman_trend(grid, "rho", ["reg_kind", "lr"])
     h2 = spearman_trend(grid, "lr", ["reg_kind", "rho"])
     for table, stem in ((h1, "h1_rho_trend"), (h2, "h2_lr_trend")):
+        if table.empty:  # например, в сетке одно значение η
+            continue
         view = table.copy()
         view["reg_kind"] = view.reg_kind.str.upper()
+        for column in ("lr", "rho"):
+            if column in view:
+                view[column] = view[column].map(sci_label)
         save_table(view.rename(columns={"reg_kind": "тип", "lr": "η", "rho": "ρ", "n": "реплик",
                                         "spearman_r": "r Спирмена", "p_holm": "p (Холм)"}), tables / stem)
     fits = {kind: scaling_fit(grid, kind) for kind in ("l2", "l1")}
@@ -151,6 +167,7 @@ def main() -> None:
     h4_best = compare_kinds_best(grid)
     h4_complete = compare_kinds_completeness(grid)
     h4_view = h4_best.copy()
+    h4_view["lr"] = h4_view.lr.map(sci_label)
     h4_view["rho_l2"] = h4_view.rho_l2.map(sci_label)
     h4_view["rho_l1"] = h4_view.rho_l1.map(sci_label)
     save_table(h4_view.rename(columns={

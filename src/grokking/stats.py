@@ -148,6 +148,10 @@ def scaling_fit(det: pd.DataFrame, kind: str) -> dict:
     Возвращает α и β с 95% ДИ, R² и p-значение проверки α = β (t-тест разности коэффициентов).
     """
     sub = det[(det.reg_kind == kind) & (det.rho > 0) & det.outcome.isin(TRANSITION)]
+    if sub.lr.nunique() < 2 or sub.rho.nunique() < 2 or len(sub) < 5:
+        # регрессия не определена: нужны хотя бы два значения η и два значения ρ
+        empty = ("alpha", "alpha_low", "alpha_high", "beta", "beta_low", "beta_high", "beta_se", "r2", "p_alpha_eq_beta")
+        return {"reg_kind": kind, "n": len(sub), **dict.fromkeys(empty, math.nan)}
     y = np.log10(sub.t_grok.to_numpy(dtype=float))
     X = np.column_stack([np.ones(len(sub)), np.log10(sub.lr.to_numpy(dtype=float)),
                          np.log10(sub.rho.to_numpy(dtype=float))])
