@@ -1,0 +1,9 @@
+{
+  "synthetic_curves": 600,
+  "synthetic_recognized_share": 0.9,
+  "main_median_error": 0.011322122185045174,
+  "main_p95_error": 0.06183502237232972,
+  "main_share_within_10pct": 0.8537037037037037,
+  "false_positive_rate": 0.0,
+  "real_replicas_with_transition": 175
+}
