@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grokking"
+version = "0.1.0"
+description = "Эффект отложенного обобщения (grokking) на задаче сложения по модулю q"
+requires-python = ">=3.12"
+dependencies = ["torch", "numpy", "scipy", "matplotlib", "pyyaml", "pandas"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "pilot"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
