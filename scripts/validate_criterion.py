@@ -49,7 +49,7 @@ def estimate_all(steps, train, test, params) -> tuple[object, dict[str, float | 
     return d, {
         METHODS[0]: d.t_grok,
         METHODS[1]: threshold_crossing(steps, test, i_mem, midpoint),
-        METHODS[2]: max_log_derivative(steps, test, i_mem, params.smooth_window),
+        METHODS[2]: max_log_derivative(steps, test, i_mem, params.smooth_window, params.log_grid_points),
         METHODS[3]: sigmoid_midpoint(steps, test, i_mem, d.t_grok),
     }
 
@@ -75,7 +75,8 @@ def synthetic_study(n: int, seed: int, params: DetectionParams):
             rows.append({
                 "curve": i, "method": method, "t_star": t_star, "estimate": value,
                 "error": abs(math.log10(value / t_star)) if value else math.nan,
-                "late": t_star > 1500, "dip": dip is not None, "partial": high < 0.95, "detected": d.outcome,
+                "late": t_star > 1500, "dip": dip is not None, "partial": high < 0.95, "high": high,
+                "detected": d.outcome in TRANSITION,
             })
     return pd.DataFrame(rows), example
 
@@ -113,6 +114,32 @@ def real_study(roots: list[Path], params: DetectionParams) -> tuple[pd.DataFrame
     return pd.DataFrame(rows), pd.DataFrame(thinning)
 
 
+def threshold_sensitivity(roots: list[Path], jumps=(0.2, 0.3, 0.4)) -> pd.DataFrame:
+    """Исходы реплик сетки при разных порогах скачка δ_min (остальные параметры по умолчанию)."""
+    rows = []
+    for root in roots:
+        for job in iter_jobs(root):
+            m = job.metrics
+            kind = job.config["regularization"]["kind"]
+            for r in range(len(m["seed"])):
+                outcomes = {j: detect(m["step"], m["train_acc"][:, r], m["test_acc"][:, r],
+                                      DetectionParams(min_jump=j)).outcome for j in jumps}
+                rows.append({"reg_kind": kind, "rho": float(m["rho"][r]), **{f"d{j}": o for j, o in outcomes.items()}})
+    table = pd.DataFrame(rows)
+    table = table[table.rho > 0]
+    result = []
+    for kind, part in table.groupby("reg_kind"):
+        for j in jumps:
+            column = part[f"d{j}"]
+            result.append({
+                "тип": kind.upper(), "порог δ_min": j, "реплик": len(part),
+                "grokking": int((column == "grokking").sum()), "частичное": int((column == "partial").sum()),
+                "нет обобщения": int((column == "no_generalization").sum()),
+                "исход отличается от δ_min = 0.3, доля": float((column != part["d0.3"]).mean()),
+            })
+    return pd.DataFrame(result)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Проверка критерия момента перехода")
     parser.add_argument("--detections", type=Path, required=True)
@@ -123,16 +150,27 @@ def main() -> None:
     args = parser.parse_args()
     params = DetectionParams()
 
-    synth, example = synthetic_study(args.n_synthetic, seed=0, params=params)
+    synth_all, example = synthetic_study(args.n_synthetic, seed=0, params=params)
     train, test, t_star, est = example
     plot_criterion_example(STEPS, train, test, t_star, est, args.figures / "criterion_example.png")
+
+    # Доля распознанных переходов зависит от величины скачка: скачок < 0.3 по определению не переход
+    curves = synth_all[synth_all.method == METHODS[0]]
+    bins = pd.cut(curves.high, [0.35, 0.5, 0.7, 0.95, 1.0], include_lowest=True)
+    recognition = curves.groupby(bins, observed=True).detected.agg(["size", "mean"]).reset_index()
+    recognition.columns = ["итоговый уровень test_acc (high)", "кривых", "распознан переход, доля"]
+    recognition["итоговый уровень test_acc (high)"] = recognition["итоговый уровень test_acc (high)"].astype(str)
+    save_table(recognition, args.tables / "criterion_recognition")
+
+    # Точность локализации — только на распознанных кривых
+    synth = synth_all[synth_all.detected]
     errors = {m: synth[(synth.method == m) & synth.error.notna()].error.to_numpy() for m in METHODS}
     plot_criterion_errors(errors, args.figures / "criterion_errors.png")
 
     def describe(part: pd.DataFrame) -> dict:
         ok = part.error.dropna()
         return {"кривых": len(part), "медиана ошибки": ok.median(), "95-й перцентиль": ok.quantile(0.95),
-                "ошибка < 0.04 (10%), доля": (ok < 0.04).sum() / len(part), "нет ответа, доля": part.error.isna().mean()}
+                "в пределах 10%, доля": (ok < 0.04).sum() / len(part), "нет ответа, доля": part.error.isna().mean()}
 
     conditions = [("все", slice(None)), ("переход после 1500-й эпохи", "late"), ("с провалом после перехода", "dip"),
                   ("неполное обобщение (high < 0.95)", "partial")]
@@ -168,10 +206,13 @@ def main() -> None:
                           "медиана |log10(t_grok / t_grok полн.)|": part.error.median(),
                           "максимум": part.error.max()})
     save_table(pd.DataFrame(thin_rows), args.tables / "criterion_thinning")
+    sensitivity = threshold_sensitivity(args.results)
+    save_table(sensitivity, args.tables / "criterion_threshold_sensitivity")
 
     main_errors = synth[synth.method == METHODS[0]].error
     summary = {
         "synthetic_curves": args.n_synthetic,
+        "synthetic_recognized_share": float(curves.detected.mean()),
         "main_median_error": float(main_errors.median()),
         "main_p95_error": float(main_errors.quantile(0.95)),
         "main_share_within_10pct": float((main_errors < 0.04).mean()),
@@ -179,9 +220,11 @@ def main() -> None:
         "real_replicas_with_transition": len(real),
     }
     save_json(summary, args.tables / "criterion_summary.json")
+    print(recognition.to_string(index=False))
     print(pd.DataFrame(synth_rows).to_string(index=False))
     print(pd.DataFrame(agree_rows).to_string(index=False))
     print(pd.DataFrame(thin_rows).to_string(index=False))
+    print(sensitivity.to_string(index=False))
     print(summary)
 
 

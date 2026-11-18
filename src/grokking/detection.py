@@ -1,10 +1,13 @@
 """
 Критерий момента перехода от запоминания к обобщению (docs/EXPERIMENTS.md §3).
 
-Основной критерий — задача оптимизации: на отрезке после запоминания кривая test_acc
-приближается ступенькой с одним скачком по методу наименьших квадратов, момент скачка
-и есть t_grok. Альтернативные критерии (порог середины, максимум производной по log t,
-середина подогнанной сигмоиды) нужны для проверки основного.
+Основной критерий — задача оптимизации: на отрезке после запоминания кривая test_acc,
+переведённая на равномерную сетку по log t, приближается ступенькой с одним скачком
+по методу наименьших квадратов; момент скачка и есть t_grok. Логарифмическая ось нужна,
+потому что переход симметричен именно в log t: в линейном времени верхняя половина
+подъёма занимает больше точек и сдвигает ступеньку (это показала проверка на синтетике).
+Альтернативные критерии (порог середины, максимум производной по log t, середина
+подогнанной сигмоиды) нужны для проверки основного.
 """
 from __future__ import annotations
 
@@ -23,7 +26,8 @@ class DetectionParams:
     min_jump: float = 0.3  # минимальный скачок test_acc, чтобы считать переход состоявшимся
     simultaneous_threshold: float = 0.5  # test_acc в момент запоминания, выше которой задержки нет
     tail_fraction: float = 0.05  # доля последних точек для итогового уровня test_acc
-    smooth_window: int = 5  # окно сглаживания (в точках) для критерия по производной
+    log_grid_points: int = 400  # число точек равномерной сетки по log t
+    smooth_window: int = 9  # окно сглаживания (в точках сетки) для критерия по производной
 
 
 @dataclass(frozen=True)
@@ -71,20 +75,36 @@ def threshold_crossing(steps: np.ndarray, test_acc: np.ndarray, start_idx: int, 
     return int(steps[start_idx + hits[0]]) if len(hits) else None
 
 
-def max_log_derivative(steps: np.ndarray, test_acc: np.ndarray, start_idx: int, window: int) -> int | None:
-    """Эпоха наибольшей скорости роста сглаженной test_acc по log t (среднее геометрическое соседних точек)."""
+def log_resample(steps: np.ndarray, values: np.ndarray, start_idx: int, n_points: int) -> tuple[np.ndarray, np.ndarray]:
+    """Значения после start_idx на равномерной сетке по log t (линейная интерполяция по log t)."""
     t = steps[start_idx:].astype(np.float64)
-    a = test_acc[start_idx:].astype(np.float64)
+    a = values[start_idx:].astype(np.float64)
     mask = t > 0
-    t, a = t[mask], a[mask]
-    if len(t) < window + 2:
+    u = np.log(t[mask])
+    grid = np.linspace(u[0], u[-1], n_points)
+    return np.exp(grid), np.interp(grid, u, a[mask])
+
+
+def first_epoch_at_or_after(steps: np.ndarray, t: float) -> int:
+    """Ближайшая записанная эпоха, не раньше t (ответ критерия — всегда реальная эпоха записи)."""
+    return int(steps[min(int(np.searchsorted(steps, t - 1e-9)), len(steps) - 1)])
+
+
+def max_log_derivative(steps: np.ndarray, test_acc: np.ndarray, start_idx: int, window: int,
+                       n_points: int = 400) -> int | None:
+    """Эпоха наибольшей скорости роста сглаженной test_acc по log t.
+
+    Производная берётся на равномерной сетке по log t: на исходной сетке шаг по log t
+    к концу обучения крошечный, и деление на него раздувает шум.
+    """
+    if len(steps) - start_idx < 3:
         return None
-    kernel = np.ones(window) / window
-    smooth = np.convolve(a, kernel, mode="valid")
-    t_valid = t[window // 2 : window // 2 + len(smooth)]
-    slope = np.diff(smooth) / np.diff(np.log(t_valid))
-    i = int(np.argmax(slope))
-    return round(math.sqrt(t_valid[i] * t_valid[i + 1]))
+    t_grid, a_grid = log_resample(steps, test_acc, start_idx, n_points)
+    smooth = np.convolve(a_grid, np.ones(window) / window, mode="same")
+    slope = np.gradient(smooth, np.log(t_grid))
+    valid = slice(window // 2, n_points - window // 2)  # края свёртки искажены
+    i = int(np.argmax(slope[valid])) + window // 2
+    return first_epoch_at_or_after(steps, t_grid[i])
 
 
 def _sigmoid(u, low, high, u0, width):
@@ -145,17 +165,17 @@ def detect(
     if test_acc[i_mem] >= p.simultaneous_threshold:
         return Detection(outcome="simultaneous", t_mem=t_mem, censored=False, **empty, **common)
 
-    segment = test_acc[i_mem:]
-    if len(segment) < 2:
+    if len(test_acc) - i_mem < 3:
         return Detection(outcome="no_generalization", t_mem=t_mem, censored=True, **empty, **common)
-    k, _ = changepoint_l2(segment)
-    jump = float(segment[k:].mean() - segment[:k].mean())
+    t_grid, a_grid = log_resample(steps, test_acc, i_mem, p.log_grid_points)
+    k, _ = changepoint_l2(a_grid)
+    jump = float(a_grid[k:].mean() - a_grid[:k].mean())
     if jump < p.min_jump:
         return Detection(
             outcome="no_generalization", t_mem=t_mem, censored=True, **{**empty, "jump": jump}, **common
         )
 
-    t_grok = int(steps[i_mem + k])
+    t_grok = first_epoch_at_or_after(steps, t_grid[k])
     midpoint = 0.5 * (test_acc[i_mem] + end_test)
     outcome = "grokking" if end_test >= p.gen_threshold else "partial"
     return Detection(
@@ -165,7 +185,7 @@ def detect(
         censored=False,
         jump=jump,
         t_grok_thr50=threshold_crossing(steps, test_acc, i_mem, midpoint),
-        t_grok_logderiv=max_log_derivative(steps, test_acc, i_mem, p.smooth_window),
+        t_grok_logderiv=max_log_derivative(steps, test_acc, i_mem, p.smooth_window, p.log_grid_points),
         **common,
     )
 
