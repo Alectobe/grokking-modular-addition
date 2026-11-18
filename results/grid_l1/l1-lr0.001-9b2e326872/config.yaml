@@ -1,0 +1,89 @@
+experiment_name: grid_l1
+output_root: results
+data:
+  q: 97
+  train_frac: 0.4
+  split_seed: 0
+model:
+  d_hidden: 256
+  n_hidden_layers: 1
+  activation: relu
+optimizer:
+  name: adam
+  lr: 0.001
+  betas:
+  - 0.9
+  - 0.98
+  eps: 1.0e-08
+regularization:
+  kind: l1
+  rho:
+  - 3.0e-07
+  - 3.0e-07
+  - 3.0e-07
+  - 3.0e-07
+  - 3.0e-07
+  - 3.0e-07
+  - 1.0e-06
+  - 1.0e-06
+  - 1.0e-06
+  - 1.0e-06
+  - 1.0e-06
+  - 1.0e-06
+  - 3.0e-06
+  - 3.0e-06
+  - 3.0e-06
+  - 3.0e-06
+  - 3.0e-06
+  - 3.0e-06
+  - 1.0e-05
+  - 1.0e-05
+  - 1.0e-05
+  - 1.0e-05
+  - 1.0e-05
+  - 1.0e-05
+  - 3.0e-05
+  - 3.0e-05
+  - 3.0e-05
+  - 3.0e-05
+  - 3.0e-05
+  - 3.0e-05
+  apply_to: weights
+epochs: 6000
+dtype: float32
+eval_every: 10
+checkpoint_steps: []
+seeds:
+- 0
+- 1
+- 2
+- 3
+- 4
+- 5
+- 0
+- 1
+- 2
+- 3
+- 4
+- 5
+- 0
+- 1
+- 2
+- 3
+- 4
+- 5
+- 0
+- 1
+- 2
+- 3
+- 4
+- 5
+- 0
+- 1
+- 2
+- 3
+- 4
+- 5
+device: auto
+deterministic: true
+threads: 4

@@ -1,0 +1,12 @@
+{
+  "python": "3.13.16",
+  "torch": "2.14.1+cu130",
+  "numpy": "2.5.3",
+  "platform": "Linux-6.18.44-fc-v595-x86_64-with-glibc2.39",
+  "device": "cpu",
+  "threads": 4,
+  "git_commit": "51c0bbdc9646aecb397b9c1af65fc8c314131796-dirty",
+  "finished_utc": "2026-11-18T19:04:19+00:00",
+  "elapsed_sec": 2103.2,
+  "status": "done"
+}
