@@ -57,7 +57,8 @@ grokking-modular-addition/
 │   ├── base.yaml                # базовый конфиг: все фиксированные параметры
 │   ├── lr_sweep.yaml            # п. 2: подбор η для демонстрации эффекта
 │   ├── grid_l1.yaml             # п. 4: сетка (η, ρ) для L1
-│   └── grid_l2.yaml             # п. 4: сетка (η, ρ) для L2
+│   ├── grid_l2.yaml             # п. 4: сетка (η, ρ) для L2
+│   └── fourier.yaml             # доп.: реплики с сохранением весов для Фурье-анализа
 ├── src/grokking/
 │   ├── __init__.py
 │   ├── config.py                # dataclass-схема конфига, загрузка и проверка YAML
@@ -77,14 +78,17 @@ grokking-modular-addition/
 │   ├── run_grid.py              # обучить всю сетку (с возобновлением и --shard)
 │   ├── detect.py                # results/ -> detections.csv
 │   ├── validate_criterion.py    # п. 3: проверка критерия на синтетике и реальных запусках
-│   └── analyze.py               # п. 2 и п. 4: таблицы, графики, гипотезы H1–H5
+│   ├── analyze.py               # п. 2 и п. 4: таблицы, графики, гипотезы H1–H5
+│   ├── fourier.py               # доп.: Фурье-структура весов первого слоя
+│   └── fill_report.py           # вставка таблиц анализа в report/REPORT.md
 ├── tests/
 │   ├── test_config.py
 │   ├── test_data.py
 │   ├── test_model.py            # в том числе совпадение с пилотом бит в бит
 │   ├── test_regularization.py
 │   ├── test_detection.py
-│   └── test_stats.py
+│   ├── test_stats.py
+│   └── test_report.py
 ├── pilot/
 │   ├── pilot_grokking.py        # однофайловый прототип обучения; источник логики для src/
 │   ├── pilot_changepoint.py     # прототип критерия перехода
@@ -98,7 +102,8 @@ grokking-modular-addition/
 ```
 
 Обучение и детекция живут в `src/` и вызываются из `scripts/`. Вместо запланированных
-ноутбуков все таблицы и графики строят `scripts/validate_criterion.py` и `scripts/analyze.py`:
+ноутбуков все таблицы и графики строят `scripts/validate_criterion.py`, `scripts/analyze.py`
+и `scripts/fourier.py`:
 из-за сжатых сроков так быстрее, а каждый результат воспроизводится одной командой из README.
 
 ---
@@ -341,7 +346,8 @@ class DetectionParams:
     min_jump: float = 0.3
     simultaneous_threshold: float = 0.5
     tail_fraction: float = 0.05
-    smooth_window: int = 5
+    log_grid_points: int = 400   # ступенька ищется на равномерной сетке по log t
+    smooth_window: int = 9
 
 @dataclass(frozen=True)
 class Detection:
@@ -359,6 +365,7 @@ class Detection:
     final_test_acc: float
 
 def changepoint_l2(values) -> tuple[int, float]                  # индекс разрыва, SSE; O(n)
+def log_resample(steps, values, start_idx, n_points) -> (t_grid, values_grid)
 def detect(steps, train_acc, test_acc, params=None) -> Detection
 def threshold_crossing(steps, test_acc, start_idx, level) -> int | None
 def max_log_derivative(steps, test_acc, start_idx, window) -> int | None
