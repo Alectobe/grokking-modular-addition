@@ -64,5 +64,5 @@ def environment_info(device: torch.device) -> dict:
         "device": str(device),
         "threads": torch.get_num_threads(),
         "git_commit": git_commit(),
-        "finished_utc": datetime.now(UTC).isoformat(timespec="seconds"),
+        "started_utc": datetime.now(UTC).isoformat(timespec="seconds"),
     }

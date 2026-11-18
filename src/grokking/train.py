@@ -61,6 +61,8 @@ def train_job(cfg: Config, out_dir: Path, log_every_fraction: float = 0.1) -> di
     optimizer = make_optimizer(model, cfg)
     kind = cfg.regularization.kind
 
+    # Сведения об окружении (в том числе git-коммит) — на момент старта: этим кодом и обучаем
+    environment = environment_info(device)
     log: dict[str, list] = {k: [] for k in METRIC_KEYS}
     checkpoint_dir = Path(out_dir) / "checkpoints"
 
@@ -109,6 +111,6 @@ def train_job(cfg: Config, out_dir: Path, log_every_fraction: float = 0.1) -> di
         "seed": np.asarray(cfg.seeds, dtype=np.int64),
         **{k: np.asarray(v) for k, v in log.items()},
     }
-    meta = {**environment_info(device), "elapsed_sec": round(elapsed, 1)}
+    meta = {**environment, "elapsed_sec": round(elapsed, 1)}
     storage.save_job(Path(out_dir), cfg, metrics, meta)
     return metrics
