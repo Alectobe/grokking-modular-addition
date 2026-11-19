@@ -1,0 +1,179 @@
+/* Вёрстка PDF-версии отчёта: A4, оформление близкое к требованиям к курсовым работам. */
+
+@page {
+  size: A4;
+  margin: 20mm 15mm 20mm 30mm;
+  @bottom-center {
+    content: counter(page);
+    font-family: "Liberation Serif", "Times New Roman", serif;
+    font-size: 12pt;
+  }
+}
+
+/* Титульный лист считается первой страницей, но номер на нём не ставится */
+@page :first {
+  @bottom-center { content: none; }
+}
+
+/* Широкая таблица — на альбомной странице */
+@page landscape {
+  size: A4 landscape;
+  margin: 20mm 20mm 20mm 20mm;
+}
+
+html {
+  font-family: "Liberation Serif", "Times New Roman", serif;
+  font-size: 14pt;
+  line-height: 1.5;
+  color: #000;
+}
+
+body { margin: 0; counter-reset: figure table; }
+
+p {
+  margin: 0;
+  text-indent: 1.25cm;
+  text-align: justify;
+  hyphens: auto;
+}
+
+ul, ol {
+  margin: 0;
+  padding-left: 1.9cm;
+  text-align: justify;
+}
+
+li p { text-indent: 0; }
+
+h2 {
+  break-before: page;
+  break-after: avoid;
+  font-size: 14pt;
+  font-weight: bold;
+  margin: 0 0 12pt 0;
+  padding-left: 1.25cm;
+}
+
+h3 {
+  break-after: avoid;
+  font-size: 14pt;
+  font-weight: bold;
+  margin: 12pt 0 6pt 0;
+  padding-left: 1.25cm;
+}
+
+strong { font-weight: bold; }
+
+hr { display: none; }
+
+/* Рисунки: подпись под рисунком, «Рисунок N — …» */
+figure {
+  margin: 10pt 0 12pt 0;
+  text-align: center;
+  break-inside: avoid;
+}
+
+figure img {
+  max-width: 100%;
+  max-height: 200mm;
+}
+
+figcaption {
+  counter-increment: figure;
+  font-size: 12pt;
+  line-height: 1.3;
+  text-align: center;
+  margin-top: 4pt;
+}
+
+figcaption::before { content: "Рисунок " counter(figure) " — "; }
+
+/* Таблицы: подпись над таблицей, «Таблица N — …» */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 4pt 0 12pt 0;
+  font-size: 10.5pt;
+  line-height: 1.25;
+}
+
+p.table-caption {
+  counter-increment: table;
+  text-indent: 0;
+  text-align: left;
+  font-size: 12pt;
+  line-height: 1.3;
+  margin: 8pt 0 4pt 0;
+  break-after: avoid;
+}
+
+p.table-caption::before { content: "Таблица " counter(table) " — "; }
+
+th, td {
+  border: 0.6pt solid #000;
+  padding: 2pt 4pt;
+  vertical-align: top;
+  text-align: left;
+}
+
+th { font-weight: bold; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+
+.landscape, .landscape * { page: landscape; }
+.landscape table { font-size: 8pt; line-height: 1.15; }
+.landscape th, .landscape td { padding: 1pt 3pt; }
+.compact table { font-size: 9pt; }
+
+code {
+  font-family: "Liberation Mono", "DejaVu Sans Mono", monospace;
+  font-size: 0.85em;
+}
+
+pre {
+  font-size: 10pt;
+  line-height: 1.3;
+  white-space: pre-wrap;
+  border-left: 2pt solid #999;
+  padding-left: 8pt;
+  margin: 6pt 0 10pt 0;
+  text-indent: 0;
+}
+
+pre code { font-size: inherit; }
+
+math { font-family: "TeX Gyre Termes Math", "STIX Two Math", math; }
+math[display="block"] { margin: 10pt 0; }
+
+a { color: inherit; text-decoration: none; }
+p.repo { text-align: left; }
+
+/* Титульный лист */
+.title-page {
+  height: 255mm;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+  break-after: page;
+}
+
+.title-page p { text-indent: 0; text-align: center; }
+.title-page .university { font-size: 14pt; font-weight: bold; }
+.title-page .discipline { margin-top: 6pt; }
+.title-page .middle { margin-top: 70mm; }
+.title-page .work-type { font-size: 16pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1pt; }
+.title-page .theme-label { margin-top: 10pt; }
+.title-page .theme { font-size: 16pt; font-weight: bold; margin-top: 4pt; }
+.title-page .people { margin-top: 40mm; margin-left: auto; width: 100mm; }
+.title-page .people p { text-align: left; }
+.title-page .people .label { margin-top: 10pt; }
+.title-page .bottom { margin-top: auto; }
+
+/* Содержание */
+.toc h2 { break-before: auto; text-align: center; padding-left: 0; }
+.toc ol { list-style: none; padding: 0; margin: 0; }
+.toc li { display: flex; align-items: baseline; text-align: left; }
+.toc li.level-3 { padding-left: 1.25cm; }
+.toc .entry { flex: 0 1 auto; }
+.toc .dots { flex: 1 1 auto; border-bottom: 1pt dotted #000; margin: 0 4pt; min-width: 10mm; }
+.toc .page { flex: 0 0 auto; }
